@@ -1,7 +1,9 @@
-Adaboost and Bagging How-TO
-Within the main file change either T of num_trees for the number of iterations you want to do
-Comment in/out whichever function you want to run - super high-tech, I know
+Adaboost and Bagging How-TO 
 
+Inside the main file, change either variables **T** or **num_trees** for the number of iterations you want to do
+
+**Comment in/out whichever function you want to run - super high-tech, I know
+**
 
 # Number of AdaBoost iterations
 T = 500
