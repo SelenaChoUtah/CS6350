@@ -1,6 +1,7 @@
 The goal of this linear regression file is how to set the parameters. 
 
-Change the following hyperparameter within the main file to whatever you desired
+Change the following hyperparameter within the main file to whatever you desired.
+
 
 Remember to comment in/out the function you want to run
 
