@@ -1,13 +1,14 @@
 import numpy as np
 import pandas as pd
+from nnLib import *
 import datetime
-from svm import *
-import matplotlib.pyplot as plt
-from scipy.optimize import minimize
+import torch
+import torch.nn as nn
+import torch.optim as optim
 
 
 if __name__ == "__main__": 
-    print('Start Time: ',datetime.datetime.now())
+    print('Start Time:', datetime.datetime.now())
 
     # Load the training and test data
     train_data = pd.read_csv("train.csv")
@@ -23,61 +24,129 @@ if __name__ == "__main__":
     # Preprocess Data
     y_train = np.where(y_train == 0, -1, 1)  # Convert labels to {1, -1}
     y_test = np.where(y_test == 0, -1, 1)
-    # print(X_train)
 
-    C_values = [100 / 873, 500 / 873, 700 / 873]
-    gamma_0_values = [0.1,0.01, 0.001]  # tune for convergence
-    a_values = [1, 0.1, 0.01]  # tune for convergence
-    T = 100  # Maximum epochs
+    # Initialize the neural network
+    input_size = X_train.shape[1]  # Number of features
+    hidden_layer_sizes = [5, 4]   # Define the sizes of hidden layers
+    output_size = y_train.shape[1] if len(y_train.shape) > 1 else 1  # Assuming output size (number of classes)
 
-    # Problem 2
-    tra, tea, wa, ba = schedule2A(C_values, gamma_0_values, a_values, T, X_train, y_train, X_test, y_test)
-    trb, teb, wb, bb = schedule2B(C_values, gamma_0_values, a_values, T, X_train, y_train, X_test, y_test)
+    # Create the neural network
+    nna = NeuralNetwork(input_size, hidden_layer_sizes, output_size)
 
-    print(np.array(tra)-np.array(trb))
-    print(np.array(tea)-np.array(teb))
-    print(np.array(ba) - np.array(bb))
+    # Perform backpropagation for the first training example
+    x = X_train[0]  # Use features of the first training example
+    y = y_train[0]  # Use label of the first training example
 
-    # Problem 3A: Dual SVM Learning
-    dual_svm(C_values, X_train, y_train)
+    # Q2a) back-propagation
+    batch_gradients_w, batch_gradients_b = nna.backpropagation(x, y)
 
-    # Problem 3B: Gaussian Kernal in Dual SVM Learning
-    # Test different values of gamma and C    
-    gamma_values = [0.1, 0.5, 1, 5, 100]
-    C_values = [100 / 873, 500 / 873, 700 / 873]
+    # Print the gradients for weights and biases
+    for i in range(nna.num_layers):
+        print(f"Gradients for weights at layer {i+1}:\n{batch_gradients_w[i]}")
+        print(f"Gradients for biases at layer {i+1}:\n{batch_gradients_b[i]}")
 
-    gaussian_svm(gamma_values, C_values, X_train, X_test, y_train, y_test)
+    # Q2b/c) Implement sgd algo
+    # Change the nnLib as needed for weights
+    # Train neural network for different hidden layer widths
+    hidden_layer_widths = [5, 10, 25, 50, 100]
 
-    # Problem 3C: Report number of overlapped support vectors
-    # support_vectors_per_gamma = {}  # Dictionary to store support vectors for each gamma
-    C_value = 500 / 873
-    support_vectors_per_gamma = {}  # Dictionary to store support vectors for each gamma
+    for width in hidden_layer_widths:
+        nnb = NeuralNetwork(input_size, [width, width], output_size)
+        nnb.train_neural_network(X_train, y_train, X_test, y_test, width)
 
-    for gamma in gamma_values:
-        for C in C_values:
-            # Train SVM with Gaussian Kernel
-            alpha = fit(X_train, y_train, C, gamma)
-            
-            # Find support vectors
-            sv_indices = np.where(alpha > 1e-5)[0]
-            support_vectors = X_train[sv_indices]
-            support_vectors_per_gamma[gamma] = support_vectors
-            print(f"For gamma={gamma}, C={C}: Number of support vectors = {len(support_vectors)}")
+    # Q2e) Pytorch
+    depths = [3, 5, 9]
+    widths = [5, 10, 25, 50, 100]
+    activations = ['tanh', 'relu']
 
-    # Find overlapped support vectors between consecutive gamma values
-    overlapped_support_vectors = {}
-    prev_sv = None
+    # Convert data to PyTorch tensors
+    X_train_tensor = torch.Tensor(X_train)
+    y_train_tensor = torch.Tensor(y_train.reshape(-1, 1))  # Reshape for compatibility
+    X_test_tensor = torch.Tensor(X_test)
+    y_test_tensor = torch.Tensor(y_test.reshape(-1, 1))
 
-    for gamma, sv in support_vectors_per_gamma.items():
-        if prev_sv is not None:
-            overlapped = np.intersect1d(prev_sv, sv, assume_unique=True)
-            overlapped_support_vectors[(prev_gamma, gamma)] = len(overlapped)
+    for depth in depths:
+        for width in widths:
+            for activation in activations:
+                class pyNeuralNetwork(nn.Module):
+                    def __init__(self, input_size, output_size):
+                        super(pyNeuralNetwork, self).__init__()
+                        layers = []
+                        layers.append(nn.Linear(input_size, width))
+                        if activation == 'tanh':
+                            nn.init.xavier_normal_(layers[0].weight)
+                            layers.append(nn.Tanh())
+                        elif activation == 'relu':
+                            nn.init.kaiming_normal_(layers[0].weight, nonlinearity='relu')
+                            layers.append(nn.ReLU())
+                        for _ in range(depth - 2):
+                            layers.append(nn.Linear(width, width))
+                            if activation == 'tanh':
+                                nn.init.xavier_normal_(layers[-1].weight)
+                                layers.append(nn.Tanh())
+                            elif activation == 'relu':
+                                nn.init.kaiming_normal_(layers[-1].weight, nonlinearity='relu')
+                                layers.append(nn.ReLU())
+                        layers.append(nn.Linear(width, output_size))
+                        self.model = nn.Sequential(*layers)
+
+                    def forward(self, x):
+                        return self.model(x)
+
+                input_size = X_train.shape[1]
+                output_size = 1  # Assuming regression problem, change for classification
+
+                model = pyNeuralNetwork(input_size, output_size)
+                criterion = nn.MSELoss()
+                optimizer = optim.Adam(model.parameters())
+
+                # Training loop
+                epochs = 100
+                for epoch in range(epochs):
+                    model.train()
+                    optimizer.zero_grad()
+                    outputs = model(X_train_tensor)
+                    loss = criterion(outputs, y_train_tensor)
+                    loss.backward()
+                    optimizer.step()
+
+                    model.eval()
+                    with torch.no_grad():
+                        val_outputs = model(X_test_tensor)
+                        val_loss = criterion(val_outputs, y_test_tensor)    
+                # Test
+                model.eval()
+                test_outputs = model(X_test_tensor)
+                test_loss = criterion(test_outputs, y_test_tensor)
+                print(f"Depth: {depth}, Width: {width}, Activation: {activation}")
+                print(f"Train Error: {val_loss.item()}")
+                print(f"Test Error: {test_loss.item()}")
+    
+    # Q3a
+    # Hyperparameters
+    variance_values = [0.01, 0.1, 0.5, 1, 3, 5, 10, 100]
+    gamma_0 = 0.01  # Initial learning rate
+    d = 1000  # Decay rate
+    T = 100  # Number of epochs
+
+    # Perform hyperparameter tuning
+    for v in variance_values:
+        print(f"Training with variance = {v}")
+        train_errors, test_errors, obj_values = sgd(X_train, y_train, X_test, y_test, v, gamma_0, d, T)
         
-        prev_gamma = gamma
-        prev_sv = sv
-        
-    # Report the number of overlapped support vectors
-    for gammas, count in overlapped_support_vectors.items():
-        print(f"Overlapped support vectors between gamma={gammas[0]} and gamma={gammas[1]}: {int(np.round(count/5))}")
+        # Plotting the objective function curve
+        plt.plot(range(1, T + 1), obj_values, label=f"Variance = {v}")
 
-   
+        # Report training and test errors
+        print(f"Variance = {v}: Final Training Error: {train_errors[-1]}, Final Test Error: {test_errors[-1]}")
+        # plt.plot(train_errors, label= f'Variance: {v}' )
+        # plt.xlabel('Epochs')
+        # plt.ylabel('Error')
+        # plt.title(f'Variance: {v}: Training Error vs. Epochs')
+        # plt.legend()
+        # plt.show()
+    plt.xlabel('Epochs')
+    plt.ylabel('Objective Function Value')
+    plt.title('Objective Function Convergence')
+    plt.legend()
+    plt.show()
